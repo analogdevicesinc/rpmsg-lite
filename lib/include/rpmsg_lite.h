@@ -5,6 +5,7 @@
  * Copyright 2016-2025 NXP
  * Copyright 2021 ACRIOS Systems s.r.o.
  * Copyright 2026 NXP
+ * Copyright 2021 Analog Devices Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -44,6 +45,7 @@ extern "C" {
 #include "rpmsg_env.h"
 #include "llist.h"
 #include "rpmsg_default_config.h"
+#include "remoteproc.h"
 
 //! @addtogroup rpmsg_lite
 //! @{
@@ -109,6 +111,9 @@ extern "C" {
 /* Init flags */
 /*! @brief No initialization flags */
 #define RL_NO_FLAGS (0U)
+/*! @brief shmem_addr points to the fw_rsc_vdev entry of a Linux remoteproc resource table
+    (followed by two fw_rsc_vdev_vring); honoured by rpmsg_lite_remote_init() only */
+#define RL_SHM_VDEV (1U)
 
 /*!
  * @brief Reserved field structure used in rpmsg_std_hdr
