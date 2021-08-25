@@ -4,6 +4,7 @@
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
  * Copyright 2016-2026 NXP
  * Copyright 2021 ACRIOS Systems s.r.o.
+ * Copyright 2021 Analog Devices Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -1442,6 +1443,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     struct virtqueue *vqs[2] = {0};
     uint32_t idx;
     struct rpmsg_lite_instance *rpmsg_lite_dev = RL_NULL;
+    const struct fw_rsc_vdev *vdev;
 
     if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
     {
@@ -1553,17 +1555,28 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     /* Create virtqueue for each vring. */
     for (idx = 0U; idx < 2U; idx++)
     {
+        if ((init_flags & RL_SHM_VDEV) != 0U)
+        {
+            /* Vring placement is taken from the Linux remoteproc resource table (fw_rsc_vdev) */
+            vdev                = (const struct fw_rsc_vdev *)shmem_addr;
+            ring_info.phy_addr  = (void *)(char *)(uintptr_t)vdev->vring[idx].da;
+            ring_info.align     = vdev->vring[idx].align;
+            ring_info.num_descs = (uint16_t)vdev->vring[idx].num;
+        }
+        else
+        {
 #if defined(RL_ALLOW_CUSTOM_SHMEM_CONFIG) && (RL_ALLOW_CUSTOM_SHMEM_CONFIG == 1)
-        ring_info.phy_addr  = (void *)(char *)((uintptr_t)(char *)RL_WORD_ALIGN_UP((uintptr_t)(char *)shmem_addr) +
-                                              (uint32_t)((idx == 0U) ? (0U) : (shmem_config.vring_size)));
-        ring_info.align     = shmem_config.vring_align;
-        ring_info.num_descs = shmem_config.buffer_count;
+            ring_info.phy_addr  = (void *)(char *)((uintptr_t)(char *)RL_WORD_ALIGN_UP((uintptr_t)(char *)shmem_addr) +
+                                                  (uint32_t)((idx == 0U) ? (0U) : (shmem_config.vring_size)));
+            ring_info.align     = shmem_config.vring_align;
+            ring_info.num_descs = shmem_config.buffer_count;
 #else
-        ring_info.phy_addr  = (void *)(char *)((uintptr_t)(char *)RL_WORD_ALIGN_UP((uintptr_t)(char *)shmem_addr) +
-                                              (uint32_t)((idx == 0U) ? (0U) : (VRING_SIZE)));
-        ring_info.align     = VRING_ALIGN;
-        ring_info.num_descs = RL_BUFFER_COUNT;
+            ring_info.phy_addr  = (void *)(char *)((uintptr_t)(char *)RL_WORD_ALIGN_UP((uintptr_t)(char *)shmem_addr) +
+                                                  (uint32_t)((idx == 0U) ? (0U) : (VRING_SIZE)));
+            ring_info.align     = VRING_ALIGN;
+            ring_info.num_descs = RL_BUFFER_COUNT;
 #endif /* defined(RL_ALLOW_CUSTOM_VRING_CONFIG) && (RL_ALLOW_CUSTOM_VRING_CONFIG == 1) */
+        }
 
 #if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
         status = virtqueue_create_static((uint16_t)(RL_GET_VQ_ID(link_id, idx)), vq_names[idx], &ring_info,
