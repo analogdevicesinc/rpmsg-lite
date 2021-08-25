@@ -3,6 +3,7 @@
  * Copyright (c) 2015 Xilinx, Inc.
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
  * Copyright 2016-2020 NXP
+ * Copyright 2021 Analog Devices Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +44,7 @@ extern "C" {
 #include "llist.h"
 #include "rpmsg_compiler.h"
 #include "rpmsg_default_config.h"
+#include "remoteproc.h"
 
 //! @addtogroup rpmsg_lite
 //! @{
@@ -86,6 +88,7 @@ extern "C" {
 
 /* Init flags */
 #define RL_NO_FLAGS (0)
+#define RL_SHM_VDEV (1) /*!< shmem_addr points to fw_rsc_vdev from resource table followed by two fw_rsc_vdev_vring */
 
 /*! \typedef rl_ept_rx_cb_t
     \brief Receive callback function type.

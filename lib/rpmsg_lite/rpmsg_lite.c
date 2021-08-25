@@ -3,6 +3,7 @@
  * Copyright (c) 2015 Xilinx, Inc.
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
  * Copyright 2016-2020 NXP
+ * Copyright 2021 Analog Devices Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1106,6 +1107,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     struct virtqueue *vqs[2];
     uint32_t idx;
     struct rpmsg_lite_instance *rpmsg_lite_dev = RL_NULL;
+    struct fw_rsc_vdev *vdev;
 
     if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
     {
@@ -1156,10 +1158,21 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     /* Create virtqueue for each vring. */
     for (idx = 0U; idx < 2U; idx++)
     {
-        ring_info.phy_addr =
-            (void *)(char *)((uint32_t)(char *)shmem_addr + (uint32_t)((idx == 0U) ? (0U) : (VRING_SIZE)));
-        ring_info.align     = VRING_ALIGN;
-        ring_info.num_descs = RL_BUFFER_COUNT;
+        if(init_flags & RL_SHM_VDEV)
+        {
+            vdev = (struct fw_rsc_vdev *)shmem_addr;
+
+            ring_info.phy_addr = (void *)(vdev->vring[idx].da);
+            ring_info.align     = vdev->vring[idx].align;
+            ring_info.num_descs = vdev->vring[idx].num;
+        }
+        else
+        {
+            ring_info.phy_addr =
+                (void *)(char *)((uint32_t)(char *)shmem_addr + (uint32_t)((idx == 0U) ? (0U) : (VRING_SIZE)));
+            ring_info.align     = VRING_ALIGN;
+            ring_info.num_descs = RL_BUFFER_COUNT;
+        }
 
 #if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
         status = virtqueue_create_static((uint16_t)(RL_GET_VQ_ID(link_id, idx)), vq_names[idx], &ring_info,
