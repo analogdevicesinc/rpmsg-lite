@@ -1230,6 +1230,12 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     env_enable_interrupt(rpmsg_lite_dev->tvq->vq_queue_index);
 #endif
 
+    /*
+     * Let the Master device know that remote is ready for
+     * communication.
+     */
+    virtqueue_kick(rpmsg_lite_dev->tvq);
+
     return rpmsg_lite_dev;
 }
 
