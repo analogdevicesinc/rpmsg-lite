@@ -2,6 +2,7 @@
  * Copyright (c) 2014, Mentor Graphics Corporation
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
  * Copyright 2016 NXP
+ * Copyright 2021 Analog Devices Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -104,6 +105,24 @@
 
 #ifndef RL_PACKED_END
 #define RL_PACKED_END __attribute__((__packed__))
+#endif
+
+#elif defined(__CCESVERSION__)
+
+#if defined (__GNUC__)
+#define MEM_BARRIER() __sync_synchronize()
+#elif defined(__ADSPSHARC__)
+#define MEM_BARRIER() asm volatile ("SYNC;")
+#else
+#error unsupported platform
+#endif
+
+#ifndef RL_PACKED_BEGIN
+#define RL_PACKED_BEGIN _Pragma("pack(1)")
+#endif
+
+#ifndef RL_PACKED_END
+#define RL_PACKED_END _Pragma("pack()")
 #endif
 
 #else
