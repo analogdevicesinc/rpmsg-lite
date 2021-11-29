@@ -43,6 +43,9 @@ static int32_t disable_counter = 0;
 static uint32_t coreID;
 static uint32_t iid = UINT_MAX;
 static void *platform_lock;
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
+#endif
 
 /* Inline functions for interrupt control and memory barrier
  */
@@ -361,7 +364,11 @@ int32_t platform_init(void)
     }
 
     /* Create lock used in multi-instanced RPMsg */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    if (0 != env_create_mutex(&platform_lock, 1, &platform_lock_static_ctxt))
+#else
     if (0 != env_create_mutex(&platform_lock, 1))
+#endif
     {
         return -1;
     }
