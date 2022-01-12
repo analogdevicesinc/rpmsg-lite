@@ -52,6 +52,9 @@ void platform_notify(uint32_t vector_id);
 /* platform low-level time-delay (busy loop) */
 void platform_time_delay(uint32_t num_msec);
 
+/* returns 1MHz clock tick */
+uint32_t platform_us_clock_tick(void);
+
 /* platform memory functions */
 void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags);
 void platform_cache_all_flush_invalidate(void);
