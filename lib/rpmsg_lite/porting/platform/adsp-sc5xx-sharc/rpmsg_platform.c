@@ -37,6 +37,7 @@
 #endif /* defined(__ADSPARM__) */
 
 #define _CYCLES_PER_MSEC (__PROCESSOR_SPEED__ / 1000)
+#define _CYCLES_PER_USEC (__PROCESSOR_SPEED__ / 1000000)
 
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
@@ -178,6 +179,11 @@ void platform_time_delay(uint32_t num_msec)
     do {
         elapsed = __builtin_emuclk() - start;
     }while(elapsed < delay_cycles);
+}
+
+uint32_t platform_us_clock_tick(void){
+	unsigned long long tick = __builtin_emuclk() / _CYCLES_PER_USEC;
+	return (uint32_t)tick;
 }
 
 /**
