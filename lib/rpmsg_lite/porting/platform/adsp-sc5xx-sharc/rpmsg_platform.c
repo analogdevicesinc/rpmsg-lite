@@ -307,6 +307,8 @@ void *platform_patova(uint32_t addr)
 static void iccInterruptHandler(uint32_t iid, void *handlerArg){
     env_isr(0);
     env_isr(1);
+    env_isr(2);
+    env_isr(3);
 }
 
 /**
