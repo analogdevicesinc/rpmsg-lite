@@ -903,6 +903,11 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
     uint32_t idx, j;
     struct rpmsg_lite_instance *rpmsg_lite_dev = RL_NULL;
 
+    if (RL_VRING_OVERHEAD > shmem_length)
+    {
+        return RL_NULL;
+    }
+
     if ((2U * (uint32_t)RL_BUFFER_COUNT) >
         ((RL_WORD_ALIGN_DOWN(shmem_length - (uint32_t)RL_VRING_OVERHEAD)) / (uint32_t)RL_BUFFER_SIZE))
     {
