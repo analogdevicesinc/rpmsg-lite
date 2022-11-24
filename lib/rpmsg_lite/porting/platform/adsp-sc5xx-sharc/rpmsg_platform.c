@@ -19,22 +19,12 @@
 
 #include <cycle_count.h>
 
-#if !defined (__ADI_HAS_TRU__)
+#if !defined (__ADI_HAS_TRU__) || !defined (__ADSPSHARC__)
 #error unsupported platform
 #endif
 
-/* TRU is available to both ARM and SHARC cores */
 #include <services/tru/adi_tru.h>
-
-#if defined(__ADSPARM__)
-#define HAS_GIC /* GIC is only available to the ARM core */
-#include <services/int/adi_gic.h>
-#elif defined(__ADSPSHARC__)
-#define HAS_SEC /* SEC is only available to the SHARC cores */
 #include <services/int/adi_sec.h>
-#else
-#error unsupported platform, ARM/SHARC are not defined
-#endif /* defined(__ADSPARM__) */
 
 #define _CYCLES_PER_MSEC (__PROCESSOR_SPEED__ / 1000)
 #define _CYCLES_PER_USEC (__PROCESSOR_SPEED__ / 1000000)
@@ -327,10 +317,6 @@ int32_t platform_init(void)
      */
     switch (coreID)
     {
-    case ADI_CORE_ARM:
-        iid = (uint32_t)INTR_TRU0_INT3;
-        break;
-
     case ADI_CORE_SHARC0:
         iid = (uint32_t)INTR_TRU0_INT7;
         break;
@@ -353,15 +339,12 @@ int32_t platform_init(void)
     //ICC interrupts
     adi_tru_ConfigureSlave(TRGS_TRU0_IRQ3,  TRGM_SOFT3); /* SLV3  ARM */
     adi_tru_ConfigureSlave(TRGS_TRU0_IRQ7,  TRGM_SOFT4); /* SLV7  SHARC1 */
+#if __NUM_SHARC_CORES__ > 1
     adi_tru_ConfigureSlave(TRGS_TRU0_IRQ11, TRGM_SOFT5); /* SLV11 SHARC2 */
+#endif
 
     /* Set the interrupt to edge-sensitive for use with the TRU (default is level-sensitive) */
-    #if defined(HAS_GIC)
-        adi_gic_ConfigInt(iid, ADI_GIC_INT_EDGE_SENSITIVE, ADI_GIC_INT_HANDLING_MODEL_1_N);
-    #elif defined(HAS_SEC)
-        adi_sec_EnableEdgeSense(iid, true);
-    #endif
-
+    adi_sec_EnableEdgeSense(iid, true);
 
     /* Install the ICC interrupt handler.
      * One handler serves all connections into and out of this node (core).
