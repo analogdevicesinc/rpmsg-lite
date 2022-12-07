@@ -26,9 +26,6 @@
 #include <services/tru/adi_tru.h>
 #include <services/int/adi_sec.h>
 
-#define _CYCLES_PER_MSEC (__PROCESSOR_SPEED__ / 1000)
-#define _CYCLES_PER_USEC (__PROCESSOR_SPEED__ / 1000000)
-
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
 static uint32_t coreID;
@@ -38,36 +35,27 @@ static void *platform_lock;
 static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 #endif
 
+
+static cycle_t cclk = 1000000000; /* Default to 1GHz */
+#define _CYCLES_PER_MSEC (cclk / 1000)
+#define _CYCLES_PER_USEC (cclk / 1000000)
+#if !defined (CLKIN)
+/* Default to 25 MHz, which is used for all the EZKITs*/
+#define CLKIN 25000000
+#endif
 /* Inline functions for interrupt control and memory barrier
  */
 
-#if defined (__GNUC__)
-static inline
-void platform_global_isr_enable(uint32_t istate)
-{
-    __builtin_enable_interrupts();
-}
-
-static inline
-uint32_t platform_global_isr_disable(void)
-{
-    __builtin_disable_interrupts();
-    return 0u;
-}
-#elif defined(__ADSPSHARC__)
 #pragma inline
-void platform_global_isr_enable(uint32_t istate)
-{
+void platform_global_isr_enable(uint32_t istate) {
     /* Globally (conditionally) re-enable interrupts */
-    if (istate != 0u)
-    {
+    if (istate != 0u) {
         asm volatile("bit SET MODE1 0x1000;"); /* set GIE */
     }
 }
 
 #pragma inline
-uint32_t platform_global_isr_disable(void)
-{
+uint32_t platform_global_isr_disable(void) {
     uint32_t mask = (uint32_t)__builtin_sysreg_bit_tst(sysreg_MODE1, 0x1000u /*IRPTEN*/);
 
     /* in VISA the length of the instructions can be different so we can no
@@ -81,20 +69,15 @@ uint32_t platform_global_isr_disable(void)
 
     return mask;
 }
-#else
-#error unsupported platform
-#endif
 
-int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
-{
+int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data) {
     /* Register ISR to environment layer */
     env_register_isr(vector_id, isr_data);
 
     env_lock_mutex(platform_lock);
 
     RL_ASSERT(0 <= isr_counter);
-    if (isr_counter == 0)
-    {
+    if (isr_counter == 0)     {
         adi_int_EnableInt(iid, true);
     }
     isr_counter++;
@@ -104,14 +87,12 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
     return 0;
 }
 
-int32_t platform_deinit_interrupt(uint32_t vector_id)
-{
+int32_t platform_deinit_interrupt(uint32_t vector_id) {
     env_lock_mutex(platform_lock);
 
     RL_ASSERT(0 < isr_counter);
     isr_counter--;
-    if (isr_counter == 0)
-    {
+    if (isr_counter == 0) {
         adi_int_EnableInt(iid, false);
     }
 
@@ -123,8 +104,7 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
     return 0;
 }
 
-void platform_notify(uint32_t vector_id)
-{
+void platform_notify(uint32_t vector_id) {
     int32_t trigger;
 
     env_lock_mutex(platform_lock);
@@ -133,7 +113,7 @@ void platform_notify(uint32_t vector_id)
     /* TRGM_SOFT4 SLV7  SHARC1 */
     /* TRGM_SOFT5 SLV11 SHARC2 */
 
-    switch(coreID){
+    switch(coreID) {
     case ADI_CORE_ARM:
         trigger = TRGM_SOFT4 + RL_GET_LINK_ID(vector_id); // TRGM_SOFT4 or TRGM_SOFT5
         break;
@@ -160,8 +140,7 @@ void platform_notify(uint32_t vector_id)
  *
  * This is not an accurate delay, it ensures at least num_msec passed when return.
  */
-void platform_time_delay(uint32_t num_msec)
-{
+void platform_time_delay(uint32_t num_msec) {
     cycle_t start, elapsed, delay_cycles;
     start = __builtin_emuclk();
     delay_cycles = (num_msec * _CYCLES_PER_MSEC);
@@ -171,7 +150,7 @@ void platform_time_delay(uint32_t num_msec)
     }while(elapsed < delay_cycles);
 }
 
-uint32_t platform_us_clock_tick(void){
+uint32_t platform_us_clock_tick(void) {
 	unsigned long long tick = __builtin_emuclk() / _CYCLES_PER_USEC;
 	return (uint32_t)tick;
 }
@@ -184,8 +163,7 @@ uint32_t platform_us_clock_tick(void){
  * @return True for IRQ, false otherwise.
  *
  */
-int32_t platform_in_isr(void)
-{
+int32_t platform_in_isr(void) {
     return (sysreg_read(sysreg_IMASKP)) != 0u;
 }
 
@@ -199,8 +177,7 @@ int32_t platform_in_isr(void)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_enable(uint32_t vector_id)
-{
+int32_t platform_interrupt_enable(uint32_t vector_id) {
     uint32_t imask;
     RL_ASSERT(0 < disable_counter);
 
@@ -208,8 +185,7 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
     disable_counter--;
 
     /* The iid interrupt is shared by both ARM and SHARC VirtIOs, enable if both wants to enable */
-    if (disable_counter == 0)
-    {
+    if (disable_counter == 0) {
         adi_int_EnableInt(iid, true);
     }
     platform_global_isr_enable(imask);
@@ -226,15 +202,13 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_disable(uint32_t vector_id)
-{
+int32_t platform_interrupt_disable(uint32_t vector_id) {
     uint32_t imask;
     RL_ASSERT(0 <= disable_counter);
 
     imask = platform_global_isr_disable();
     /* The iid interrupt is shared by both ARM and SHARC VirtIOs, disable if one wants to disable */
-    if (disable_counter == 0)
-    {
+    if (disable_counter == 0) {
         adi_int_EnableInt(iid, false);
     }
     disable_counter++;
@@ -248,8 +222,7 @@ int32_t platform_interrupt_disable(uint32_t vector_id)
  * Dummy implementation
  *
  */
-void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
-{
+void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags) {
 }
 
 /**
@@ -258,8 +231,7 @@ void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size
  * Dummy implementation
  *
  */
-void platform_cache_all_flush_invalidate(void)
-{
+void platform_cache_all_flush_invalidate(void) {
 }
 
 /**
@@ -268,8 +240,7 @@ void platform_cache_all_flush_invalidate(void)
  * Dummy implementation
  *
  */
-void platform_cache_disable(void)
-{
+void platform_cache_disable(void) {
 }
 
 /**
@@ -278,8 +249,7 @@ void platform_cache_disable(void)
  * Dummy implementation
  *
  */
-uint32_t platform_vatopa(void *addr)
-{
+uint32_t platform_vatopa(void *addr) {
     return ((uint32_t)(char *)addr);
 }
 
@@ -289,12 +259,11 @@ uint32_t platform_vatopa(void *addr)
  * Dummy implementation
  *
  */
-void *platform_patova(uint32_t addr)
-{
+void *platform_patova(uint32_t addr) {
     return ((void *)(char *)addr);
 }
 
-static void iccInterruptHandler(uint32_t iid, void *handlerArg){
+static void iccInterruptHandler(uint32_t iid, void *handlerArg) {
     env_isr(0);
     env_isr(1);
     env_isr(2);
@@ -306,21 +275,52 @@ static void iccInterruptHandler(uint32_t iid, void *handlerArg){
  *
  * platform/environment init
  */
-int32_t platform_init(void)
-{
+int32_t platform_init(void) {
+    /*
+    * Retrieve the CCLK for the SHARC.  See CDU Clock Configuration options in the
+    * Hardware Reference Manual
+    */
+    uint32_t cdu_sel;
+    uint32_t cgu_mul;
+    uint32_t cgu_div;
 
     coreID = adi_core_id();
+
+    switch (coreID) {
+    case ADI_CORE_SHARC0:
+        cdu_sel = *pREG_CDU0_CFG0 & BITM_CDU_CFG_SEL;
+        break;
+    case ADI_CORE_SHARC1:
+        cdu_sel = *pREG_CDU0_CFG1 & BITM_CDU_CFG_SEL;
+        break;
+    default:
+        return -1; // should never happen
+    }
+
+    switch (cdu_sel) {
+    case ENUM_CDU_CFG_IN0:
+        cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
+        cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_CSEL) >> BITP_CGU_DIV_CSEL;
+        cclk = CLKIN * cgu_mul / cgu_div;
+        break;
+    case ENUM_CDU_CFG_IN1:
+        /*SC58x and SC57x only*/
+        cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
+        cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_SYSSEL) >> BITP_CGU_DIV_SYSSEL;
+        cclk = CLKIN * cgu_mul / cgu_div;
+        break;
+    default:
+        return -1;
+    }
 
     /*
      * Platform-specific interrupt initialization.
      * We'll be raising SEC/GIC interrupts via the Trigger Routing Unit (ADSP-SC58x/ADSP-215xx)
      */
-    switch (coreID)
-    {
+    switch (coreID) {
     case ADI_CORE_SHARC0:
         iid = (uint32_t)INTR_TRU0_INT7;
         break;
-
     case ADI_CORE_SHARC1:
         iid = (uint32_t)INTR_TRU0_INT11;
         break;
@@ -349,8 +349,7 @@ int32_t platform_init(void)
     /* Install the ICC interrupt handler.
      * One handler serves all connections into and out of this node (core).
      */
-    if (ADI_INT_SUCCESS != adi_int_InstallHandler(iid, &iccInterruptHandler, NULL, false))
-    {
+    if (ADI_INT_SUCCESS != adi_int_InstallHandler(iid, &iccInterruptHandler, NULL, false)) {
         return -1;
     }
 
@@ -372,8 +371,7 @@ int32_t platform_init(void)
  *
  * platform/environment deinit process
  */
-int32_t platform_deinit(void)
-{
+int32_t platform_deinit(void) {
     /* Delete lock used in multi-instanced RPMsg */
     env_delete_mutex(platform_lock);
     platform_lock = ((void *)0);
