@@ -15,7 +15,7 @@
 #include "rpmsg_env.h"
 #include "rpmsg_platform.h"
 
-#if !defined (__ADI_HAS_TRU__) || !defined(__ADSPCORTEXA5__)
+#if !defined (__ADI_HAS_TRU__) || !defined(__ADSPCORTEXA55__)
 #error unsupported platform
 #endif
 
@@ -31,6 +31,7 @@ static void *platform_lock;
 static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 #endif
 
+
 static uint32_t cclk = 1000000000; /* Default to 1GHz */
 #define _CYCLES_PER_MSEC (cclk / 1000)
 #define _CYCLES_PER_USEC (cclk / 1000000)
@@ -44,15 +45,16 @@ static uint32_t cclk = 1000000000; /* Default to 1GHz */
 static inline
 void platform_global_isr_enable(uint32_t istate)
 {
-    __builtin_enable_interrupts();
+	adi_gic_Enable(true);
 }
 
 static inline
 uint32_t platform_global_isr_disable(void)
 {
-    __builtin_disable_interrupts();
+	adi_gic_Enable(false);
     return 0u;
 }
+
 
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
@@ -127,8 +129,6 @@ void platform_notify(uint32_t vector_id)
  *
  * This is not an accurate delay, it ensures at least num_msec passed when return.
  */
-
-
 void platform_time_delay(uint32_t num_msec)
 {
     cycle_t start, elapsed, delay_cycles;
@@ -156,16 +156,16 @@ uint32_t platform_us_clock_tick(void)
  */
 int32_t platform_in_isr(void)
 {
-    uint32_t local_cpsr;
-    uint32_t mode;
-    asm ("MRS %0, CPSR" :"=r"(local_cpsr): :);
+    uint32_t icc_rpr_el1;
 
-    mode = (local_cpsr & ADI_RTL_ARM_MODE_MASK);
+    /* Read from ICC_RPR_EL1 (Running Priority Register). */
+    asm ("MRS %0, s3_0_c12_c11_3\n" : "=r" (icc_rpr_el1) );
 
-    if((mode == ADI_RTL_ARM_MODE_USR) || (mode == ADI_RTL_ARM_MODE_SYS) || (mode == ADI_RTL_ARM_MODE_SVC) )
-        return false;
-    else
-        return true;
+    /* If there are no active interrupts on the CPU interface the value
+     * of ICC_RPR_EL1 is the Idle priority 0xff.
+     */
+    return (icc_rpr_el1 != 0xffu);
+
 }
 
 /**
@@ -287,7 +287,7 @@ static void iccInterruptHandler(uint32_t iid, void *handlerArg)
 int32_t platform_init(void)
 {
     /*
-    * Retrieve the CCLK for the A5.  See CDU Clock Configuration options in the 
+    * Retrieve the CCLK for the A55.  See CDU Clock Configuration options in the
     * Hardware Reference Manual
     */
     uint32_t cdu_sel = *pREG_CDU0_CFG2 & BITM_CDU_CFG_SEL;
@@ -300,11 +300,13 @@ int32_t platform_init(void)
         cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_CSEL) >> BITP_CGU_DIV_CSEL;
     	cclk = CLKIN * cgu_mul / cgu_div;
         break;
-    case ENUM_CDU_CFG_IN1:
-        /*SC58x and SC57x only*/
+    case ENUM_CDU_CFG_IN2:
         cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
-        cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_SYSSEL) >> BITP_CGU_DIV_SYSSEL;
-    	cclk = CLKIN * cgu_mul / cgu_div;
+    	cclk = CLKIN * cgu_mul * 2 / 3;
+        break;
+    case ENUM_CDU_CFG_IN3:
+        cgu_mul = (*pREG_CGU1_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
+    	cclk = CLKIN * cgu_mul * 2 / 3;
         break;
     default:
         return -1;
@@ -316,7 +318,7 @@ int32_t platform_init(void)
      * Platform-specific interrupt initialization.
      * We'll be raising SEC/GIC interrupts via the Trigger Routing Unit (ADSP-SC58x/ADSP-215xx)
      */
-    iid = (uint32_t)INTR_TRU0_INT3;
+        iid = (uint32_t)INTR_TRU0_INT3;
 
     /* Set up the Trigger Routing Unit to route the soft triggers 3,
      * 4, and 5 to the ARM, SHARC1, and SHARC2 cores respectively.
@@ -333,7 +335,7 @@ int32_t platform_init(void)
     adi_tru_ConfigureSlave(TRGS_TRU0_IRQ11, TRGM_SOFT5); /* SLV11 SHARC2 */
 #endif
     /* Set the interrupt to edge-sensitive for use with the TRU (default is level-sensitive) */
-    adi_gic_ConfigInt(iid, ADI_GIC_INT_EDGE_SENSITIVE, ADI_GIC_INT_HANDLING_MODEL_1_N);
+	adi_gic_ConfigInt(iid, ADI_GIC_INT_EDGE_SENSITIVE);
 
     /* Install the ICC interrupt handler.
      * One handler serves all connections into and out of this node (core).

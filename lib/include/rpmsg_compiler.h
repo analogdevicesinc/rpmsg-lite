@@ -97,8 +97,7 @@
 /* GNUC */
 #elif defined(__GNUC__)
 
-#define MEM_BARRIER() __asm__ volatile("dsb" : : : "memory")
-
+#define MEM_BARRIER() __asm__ volatile("dsb sy" : : : "memory")
 #ifndef RL_PACKED_BEGIN
 #define RL_PACKED_BEGIN
 #endif
