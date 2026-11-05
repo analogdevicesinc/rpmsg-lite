@@ -115,12 +115,11 @@
 #define RL_PACKED_END __attribute__((__packed__))
 #endif
 
+/* CCES cc21k (SHARC+). The CCES ARM toolchain is GCC and is handled by the __GNUC__ branch above. */
 #elif defined(__CCESVERSION__)
 
-#if defined (__GNUC__)
-#define MEM_BARRIER() __sync_synchronize()
-#elif defined(__ADSPSHARC__)
-#define MEM_BARRIER() asm volatile ("SYNC;")
+#if defined(__ADSPSHARC__)
+#define MEM_BARRIER() asm volatile("SYNC;")
 #else
 #error unsupported platform
 #endif
