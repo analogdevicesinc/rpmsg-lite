@@ -1,6 +1,6 @@
 /*
  * Copyright 2017-2020 NXP
- * Copyright 2021 Analog Devices Inc.
+ * Copyright 2021-2026 Analog Devices Inc.
  * All rights reserved.
  *
  *
@@ -223,7 +223,7 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
         adi_int_EnableInt(iid, true);
     }
     platform_global_isr_enable(imask);
-    return ((int32_t)vector_id);
+    return 0;
 }
 
 /**
@@ -249,7 +249,7 @@ int32_t platform_interrupt_disable(uint32_t vector_id)
     }
     disable_counter++;
     platform_global_isr_enable(imask);
-    return ((int32_t)vector_id);
+    return 0;
 }
 
 /**
@@ -282,15 +282,57 @@ void platform_cache_disable(void)
 {
 }
 
+#if defined(RL_USE_DCACHE) && (RL_USE_DCACHE == 1)
+#if defined(__ADSPSHARC__)
+/*
+ * SHARC+ L1 data cache maintenance by address range. flush_data_buffer() works on whole
+ * 64-byte cache lines and takes the address of the last byte of the range. SHARC+ has no
+ * invalidate-only range operation, so invalidate is implemented as write-back + invalidate;
+ * a region passed to platform_cache_invalidate() must therefore not hold locally dirty lines.
+ */
+static void platform_cache_range(void *data, uint32_t len, int invalidate)
+{
+    if (len != 0U)
+    {
+        flush_data_buffer(data, (void *)((char *)data + (len - 1U)), invalidate);
+    }
+}
+
+/**
+ * platform_cache_flush
+ *
+ * Write back a range of shared memory from the L1 data cache.
+ *
+ */
+void platform_cache_flush(void *data, uint32_t len)
+{
+    platform_cache_range(data, len, ADI_FLUSH_DATA_NOINV);
+}
+
+/**
+ * platform_cache_invalidate
+ *
+ * Invalidate a range of shared memory in the L1 data cache.
+ *
+ */
+void platform_cache_invalidate(void *data, uint32_t len)
+{
+    platform_cache_range(data, len, ADI_FLUSH_DATA_INV);
+}
+#else
+#error "RL_USE_DCACHE == 1 is not supported on the ARM core of this port; keep the shared memory uncached"
+#endif /* defined(__ADSPSHARC__) */
+#endif /* defined(RL_USE_DCACHE) && (RL_USE_DCACHE == 1) */
+
 /**
  * platform_vatopa
  *
  * Dummy implementation
  *
  */
-uint32_t platform_vatopa(void *addr)
+uintptr_t platform_vatopa(void *addr)
 {
-    return ((uint32_t)(char *)addr);
+    return ((uintptr_t)(char *)addr);
 }
 
 /**
@@ -299,7 +341,7 @@ uint32_t platform_vatopa(void *addr)
  * Dummy implementation
  *
  */
-void *platform_patova(uint32_t addr)
+void *platform_patova(uintptr_t addr)
 {
     return ((void *)(char *)addr);
 }
