@@ -7,6 +7,7 @@ on:
 
 jobs:
   release:
+    if: github.repository == 'nxp-mcuxpresso/rpmsg-lite'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
