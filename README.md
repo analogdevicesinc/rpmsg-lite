@@ -12,6 +12,14 @@ ADI downstream fork of
 This orphan branch holds ADI CI/CD workflows to keep them off the development
 branches.
 
+- `checks.yml`: clang-format on changed lines, Clang compile and static
+  analyzer, and cppcheck (non-blocking). Run locally with:
+
+  ```sh
+  source ci/build.sh
+  check_clang_format origin/adi-main
+  ```
+
 - `llm.yml`: LLM code review of a branch, tag, PR, or SHA
 
   ```sh

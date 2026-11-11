@@ -1,0 +1,75 @@
+name: Checks
+
+on:
+  workflow_call:
+    inputs:
+      base:
+        description: "Commit to compare against, defaults to the PR base"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  checks:
+    # Provides clang and clang-format-16
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck libnewlib-dev
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Get sources
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ci_dir="$RUNNER_TEMP/ci"
+          mkdir -p "$ci_dir"
+          curl -sSfL -H "Authorization: Bearer $GH_TOKEN" -o "$ci_dir/build.sh" \
+            https://raw.githubusercontent.com/analogdevicesinc/rpmsg-lite/refs/heads/ci/ci/build.sh
+          echo "sh_source=$ci_dir/build.sh" >> "$GITHUB_ENV"
+
+      - name: Prepare env
+        env:
+          BASE: ${{ inputs.base || github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}"; then
+            BASE=$(git rev-parse HEAD~1)
+          fi
+          echo "Base: $BASE"
+          echo "base=$BASE" >> "$GITHUB_ENV"
+
+      - name: clang-format
+        if: ${{ !cancelled() }}
+        run: |
+          # shellcheck source=/dev/null
+          source "$sh_source"
+          check_clang_format "$base"
+
+      - name: Compile
+        if: ${{ !cancelled() }}
+        run: |
+          # shellcheck source=/dev/null
+          source "$sh_source"
+          check_compile
+
+      - name: Clang static analyzer
+        if: ${{ !cancelled() }}
+        run: |
+          # shellcheck source=/dev/null
+          source "$sh_source"
+          check_analyzer
+
+      - name: cppcheck
+        if: ${{ !cancelled() }}
+        run: |
+          # shellcheck source=/dev/null
+          source "$sh_source"
+          check_cppcheck "$base"
