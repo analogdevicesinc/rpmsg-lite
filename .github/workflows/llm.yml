@@ -1,0 +1,225 @@
+name: LLM Agent
+run-name: LLM run ${{ inputs.ref || github.ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "The branch, tag, PR number, or SHA to checkout"
+        required: false
+        type: string
+      prompt:
+        description: "Prompt to use, overwrites the default"
+        required: false
+        type: string
+        default: ""
+      prompt-extra:
+        description: "Extra prompt to concatenate"
+        required: false
+        type: string
+        default: ""
+      model:
+        description: "Model size"
+        type: choice
+        default: medium
+        options:
+          - small
+          - medium
+          - large
+      strategy:
+        description: "Review strategy"
+        type: choice
+        default: commit
+        options:
+          - commit
+          - files
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+      prompt:
+        required: false
+        type: string
+        default: ""
+      prompt-extra:
+        required: false
+        type: string
+        default: ""
+      model:
+        required: false
+        type: string
+        default: "medium"
+      strategy:
+        description: "Review strategy"
+        type: string
+        default: "commit"
+    secrets:
+      PORTKEY_API_KEY:
+        required: true
+
+jobs:
+  llm:
+    runs-on: ${{ vars.RUNNER != '' && fromJSON(vars.RUNNER) || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+
+    outputs:
+      pr: ${{ steps.llm.outputs.pr }}
+      comment: ${{ steps.llm.outputs.comment }}
+
+    steps:
+      - name: Prepare prompt
+        shell: bash
+        env:
+          PROMPT: ${{ inputs.prompt }}
+          PROMPT_EXTRA: ${{ inputs.prompt-extra }}
+          STRATEGY: ${{ inputs.strategy }}
+        run: |
+          prompt_file=$(mktemp --suffix=.md)
+          echo "prompt_file=$prompt_file" >> "$GITHUB_ENV"
+
+          printf '%s\n' "$PROMPT" > "$prompt_file"
+
+          grep -q '[^[:space:]]' "$prompt_file" || \
+          cat <<'EOF' > "$prompt_file"
+          # Run a deep RPMsg-Lite analysis.
+
+          This repository is the ADI downstream fork of NXP RPMsg-Lite
+          (https://github.com/nxp-mcuxpresso/rpmsg-lite), a lightweight
+          implementation of the RPMsg protocol over virtio for inter-processor
+          communication on asymmetric multicore systems. The remote side is
+          often Linux (`drivers/rpmsg/` and `drivers/virtio/`), so changes must
+          stay wire compatible with the virtio ring layout and the RPMsg
+          message header, endpoint, and name service formats.
+
+          Base your review on the sources and documentation in the tree, in
+          particular `./README.md`, `./CHANGELOG.md`, `./doxygen/`, and
+          `./lib/include/rpmsg_default_config.h`. Never say things you are
+          unsure about.
+
+          Repository layout:
+          - `lib/rpmsg_lite/`, `lib/virtio/`, `lib/common/`: core library
+          - `lib/include/environment/<env>/` and
+            `lib/rpmsg_lite/porting/environment/`: OS abstraction layer
+            (bare metal, FreeRTOS, ThreadX, XOS, Zephyr, QNX)
+          - `lib/include/platform/<platform>/` and
+            `lib/rpmsg_lite/porting/platform/<platform>/`: SoC specific
+            interrupt, IPC (MU, mailbox), and shared memory handling
+          - `CMakeLists.txt`, `cmake/`, `Kconfig*`: MCUXpresso SDK integration
+          - `zephyr/`: Zephyr module and samples
+          - `tests/`: MCUXpresso SDK unit tests
+
+          Review priorities:
+          1. Correctness of the virtqueue and buffer handling: index wrap,
+             ownership of buffers between cores, use-after-release, buffer
+             size and alignment against `RL_BUFFER_SIZE`, `RL_BUFFER_COUNT`,
+             and `VRING_ALIGN`.
+          2. Shared memory ordering: memory barriers, cache maintenance, and
+             volatile access when exchanging data with the other core.
+          3. Concurrency: interrupt context vs thread context, locking in the
+             environment layer, and the thread safety of the queue and zero
+             copy APIs.
+          4. Platform and environment porting layers: interrupt enable and
+             disable balance, `platform_init`/`platform_deinit` symmetry, and
+             consistency with the existing platforms.
+          5. Coding rules: upstream regularly fixes MISRA C-2012 and CERT C
+             findings; flag new violations of the same kind.
+          6. Configuration: new options must have defaults in
+             `rpmsg_default_config.h` and be documented in `README.md`.
+
+          A full build requires either the MCUXpresso SDK or a Zephyr
+          workspace, neither of which is available here. Do not attempt a full
+          build. Restrict validation to reading the code and, when helpful,
+          compiling individual translation units with stub headers.
+
+          Do **not** review commits starting with "[TMP]", "[ADI]", "[CI]",
+          they are not part of the series but to change the CI/CD or
+          temporarily change behavior.
+
+          You shall install pip packages to help you review, test and debug;
+          a venv is already active.
+          The virtual environment includes $venv_packages.
+
+          When a change targets an Analog Devices processor, check the
+          appropriate datasheets and hardware reference manuals.
+          Pre-converted (with docling), are available at the git tree:
+          ```
+          # Search
+          $ git -C "$docling_dir" ls-tree -r --name-only @ | grep -i sc59
+          # View
+          $ git -C "$docling_dir" --no-pager show @:<path>.md
+          ```
+          Do not try to fetch from the analog.com domain directly, due to bot
+          protection guards in place.
+
+          EOF
+
+          if [[ "$STRATEGY" == "files" ]]; then
+            cat <<'EOF' >> "$prompt_file"
+          ## File Review Protocol
+
+          Context: Certain files have been modified intentionally to act as
+          markers for review.
+          **Requirement:** When a file is modified in this set, you must review
+          the full file.
+          Logic:
+          1. Identify files containing the `/* touch */` comment or minor
+             placeholder changes.
+          2. Disregard the placeholder change itself.
+          3. Analyze the entire content of that file.
+          EOF
+          fi
+
+          printf '%s\n' "$PROMPT_EXTRA" >> "$prompt_file"
+
+      - name: Setup docling
+        shell: bash
+        run: |
+          docling_dir="$(mktemp -dt docling.XXX)"
+          echo "docling_dir=$docling_dir" >> "$GITHUB_ENV"
+          git clone --filter=blob:none --no-checkout --branch docling \
+              https://github.com/analogdevicesinc/doctools.git "$docling_dir"
+
+      - name: Prepare tools
+        shell: bash
+        run: |
+          py_venv="$(mktemp -d)"
+          echo "py_venv=$py_venv" >> "$GITHUB_ENV"
+
+          python3 -m venv "$py_venv"
+          source "$py_venv/bin/activate"
+          python3 -m ensurepip --upgrade
+          pip install --upgrade pip
+
+      - uses: analogdevicesinc/doctools/llm@action
+        id: llm
+        with:
+          ref: ${{ inputs.ref }}
+          model: ${{ inputs.model || 'medium' }}
+          prompt-file: ${{ env.prompt_file }}
+          api-key: ${{ secrets.PORTKEY_API_KEY }}
+          py-venv: ${{ env.py_venv }}
+
+      - name: Clean-up
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$prompt_file"
+          rm -rf "$docling_dir"
+          rm -rf "$py_venv"
+
+  pr-comment:
+    runs-on: ubuntu-slim
+    needs: llm
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: analogdevicesinc/doctools/gh-pr-comment@action
+        with:
+          pr: ${{ needs.llm.outputs.pr }}
+          body: ${{ needs.llm.outputs.comment }}
