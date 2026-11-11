@@ -1,0 +1,17 @@
+name: ADI CI
+
+on:
+  pull_request:
+  push:
+    branches: [adi-main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: analogdevicesinc/rpmsg-lite/.github/workflows/checks.yml@ci
