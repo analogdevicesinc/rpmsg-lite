@@ -13,6 +13,7 @@ env:
 
 jobs:
   deploy:
+    if: github.repository == 'nxp-mcuxpresso/rpmsg-lite'
     runs-on: ubuntu-latest
     permissions:
       contents: write
