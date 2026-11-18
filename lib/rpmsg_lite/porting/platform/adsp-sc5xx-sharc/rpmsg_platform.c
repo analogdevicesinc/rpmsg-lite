@@ -36,9 +36,6 @@
 #error unsupported platform, ARM/SHARC are not defined
 #endif /* defined(__ADSPARM__) */
 
-#define _CYCLES_PER_MSEC (__PROCESSOR_SPEED__ / 1000)
-#define _CYCLES_PER_USEC (__PROCESSOR_SPEED__ / 1000000)
-
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
 static uint32_t coreID;
@@ -48,23 +45,17 @@ static void *platform_lock;
 static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 #endif
 
+static cycle_t cclk = 1000000000; /* Default to 1GHz */
+#define _CYCLES_PER_MSEC (cclk / 1000)
+#define _CYCLES_PER_USEC (cclk / 1000000)
+#if !defined (CLKIN)
+/* Default to 25 MHz, which is used for all the EZKITs*/
+#define CLKIN 25000000
+#endif
+
 /* Inline functions for interrupt control and memory barrier
  */
 
-#if defined (__GNUC__)
-static inline
-void platform_global_isr_enable(uint32_t istate)
-{
-    __builtin_enable_interrupts();
-}
-
-static inline
-uint32_t platform_global_isr_disable(void)
-{
-    __builtin_disable_interrupts();
-    return 0u;
-}
-#elif defined(__ADSPSHARC__)
 #pragma inline
 void platform_global_isr_enable(uint32_t istate)
 {
@@ -91,9 +82,6 @@ uint32_t platform_global_isr_disable(void)
 
     return mask;
 }
-#else
-#error unsupported platform
-#endif
 
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
@@ -360,8 +348,42 @@ static void iccInterruptHandler(uint32_t iid, void *handlerArg){
  */
 int32_t platform_init(void)
 {
+    /*
+    * Retrieve the CCLK for the SHARC.  See CDU Clock Configuration options in the
+    * Hardware Reference Manual
+    */
+    uint32_t cdu_sel;
+    uint32_t cgu_mul;
+    uint32_t cgu_div;
 
     coreID = adi_core_id();
+
+    switch (coreID) {
+    case ADI_CORE_SHARC0:
+        cdu_sel = *pREG_CDU0_CFG0 & BITM_CDU_CFG_SEL;
+        break;
+    case ADI_CORE_SHARC1:
+        cdu_sel = *pREG_CDU0_CFG1 & BITM_CDU_CFG_SEL;
+        break;
+    default:
+        return -1; // should never happen
+    }
+
+    switch (cdu_sel) {
+    case ENUM_CDU_CFG_IN0:
+        cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
+        cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_CSEL) >> BITP_CGU_DIV_CSEL;
+        cclk = CLKIN * cgu_mul / cgu_div;
+        break;
+    case ENUM_CDU_CFG_IN1:
+        /*SC58x and SC57x only*/
+        cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
+        cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_SYSSEL) >> BITP_CGU_DIV_SYSSEL;
+        cclk = CLKIN * cgu_mul / cgu_div;
+        break;
+    default:
+        return -1;
+    }
 
     /*
      * Platform-specific interrupt initialization.
