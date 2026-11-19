@@ -100,7 +100,7 @@ check_clang_format () {
 
 	"$RL_CI_CLANG_FORMAT" --version
 	out=$("$git_cf" --binary "$RL_CI_CLANG_FORMAT" --diff --extensions c,h \
-		"$base" -- 2>&1)
+		"$base" -- 2>&1) || true
 	if [[ -z "$out" || "$out" == "no modified files to format" ||
 	      "$out" == "clang-format did not modify any files" ]]; then
 		return 0
