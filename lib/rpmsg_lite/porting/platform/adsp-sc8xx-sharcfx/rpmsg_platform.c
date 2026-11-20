@@ -39,6 +39,10 @@
 #error unsupported platform, ARM/SHARC are not defined
 #endif /* defined(__ADSPARM__) */
 
+#ifndef RL_PLATFORM_CLKIN_HZ
+#define RL_PLATFORM_CLKIN_HZ (25000000U)
+#endif
+
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
 static uint32_t coreID;
@@ -317,6 +321,11 @@ static void iccInterruptHandler(uint32_t iid, void *handlerArg){
  */
 int32_t platform_init(void)
 {
+
+	ADI_PWR_RESULT pwr = adi_pwr_Init(0U, RL_PLATFORM_CLKIN_HZ);
+	if ((pwr != ADI_PWR_SUCCESS) && (pwr != ADI_PWR_DEVICE_IN_USE)) {
+		return -1;
+	}
 
     iid = (uint32_t)INTR_TRU0_INT7;
 
