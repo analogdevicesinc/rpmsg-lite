@@ -74,6 +74,152 @@ _changed_lines () {
 		}'
 }
 
+# Report each change in a git-clang-format diff at its line, with the current
+# and suggested lines and the changed characters highlighted. On GitHub, each
+# change is also annotated at its line. Returns 2 if the input has no hunks.
+# Usage: _clang_format_report <base> < diff
+_clang_format_report () {
+	local color=0
+
+	if [[ -z "$NO_COLOR" && ( -t 1 || "$GITHUB_ACTIONS" == "true" ) ]]; then
+		color=1
+	fi
+
+	awk -v base="$1" -v color="$color" -v gh="$GITHUB_ACTIONS" '
+		# Escape GitHub workflow command data and properties
+		function esc(s) {
+			gsub(/%/, "%25", s); gsub(/\r/, "%0D", s); gsub(/\n/, "%0A", s)
+			return s
+		}
+		function escp(s) {
+			s = esc(s); gsub(/:/, "%3A", s); gsub(/,/, "%2C", s)
+			return s
+		}
+		# Highlight s[from..to] with on/off, or with «» and visible
+		# whitespace if on is empty. An empty range marks a position.
+		function hl(s, from, to, on, off,    mid) {
+			mid = substr(s, from, to - from + 1)
+			if (on == "") {
+				gsub(/\t/, "→", mid); gsub(/ /, "·", mid)
+				on = "«"; off = "»"
+			}
+			return substr(s, 1, from - 1) on mid off substr(s, to + 1)
+		}
+		# Set P to the common prefix length of o and n, and OE/NE to the
+		# end of the differing part in o/n
+		function span(o, n,    lo, ln, s) {
+			lo = length(o); ln = length(n)
+			for (P = 0; P < lo && P < ln; P++)
+				if (substr(o, P + 1, 1) != substr(n, P + 1, 1))
+					break
+			for (s = 0; s < lo - P && s < ln - P; s++)
+				if (substr(o, lo - s, 1) != substr(n, ln - s, 1))
+					break
+			OE = lo - s; NE = ln - s
+		}
+		function norm(s) {
+			gsub(/[ \t]+/, "", s)
+			return s
+		}
+		# Append a removed, added or changed line to out, and the
+		# suggested line to msg
+		function del(i) {
+			out = out sprintf("%6d ", start + i - 1) red "-" d[i] rst "\n"
+		}
+		function add(j) {
+			out = out "       " grn "+" a[j] rst "\n"
+			msg = msg "\n+" a[j]
+		}
+		function pair(i, j) {
+			span(d[i], a[j])
+			out = out sprintf("%6d ", start + i - 1) red "-" \
+			      hl(d[i], P + 1, OE, ron, roff) rst "\n"
+			out = out "       " grn "+" hl(a[j], P + 1, NE, gon, goff) rst "\n"
+			msg = msg "\n+" hl(a[j], P + 1, NE)
+		}
+		function flush(    i, j, l, e, L) {
+			if (nd + na == 0)
+				return
+			issues++
+			# A pure insertion is reported at the line before it
+			l = nd ? start : (start > 1 ? start - 1 : 1)
+			e = nd ? start + nd - 1 : l
+			out = sprintf("%s:%d%s: clang-format\n", file, l, e > l ? "-" e : "")
+			msg = na ? "Suggested:" : "Suggested: remove the line(s)"
+			if (nd == na) {
+				for (i = 1; i <= nd; i++)
+					pair(i, i)
+			} else {
+				# Lines were split or joined: pair up the lines that only
+				# differ in whitespace (LCS), show the others whole
+				for (i = 1; i <= nd; i++)
+					dn[i] = norm(d[i])
+				for (j = 1; j <= na; j++)
+					an[j] = norm(a[j])
+				for (i = nd + 1; i >= 1; i--)
+					for (j = na + 1; j >= 1; j--)
+						if (i > nd || j > na)
+							L[i, j] = 0
+						else if (dn[i] == an[j])
+							L[i, j] = L[i + 1, j + 1] + 1
+						else if (L[i + 1, j] >= L[i, j + 1])
+							L[i, j] = L[i + 1, j]
+						else
+							L[i, j] = L[i, j + 1]
+				for (i = j = 1; i <= nd || j <= na; )
+					if (i <= nd && j <= na && dn[i] == an[j])
+						pair(i++, j++)
+					else if (j > na || (i <= nd && L[i + 1, j] >= L[i, j + 1]))
+						del(i++)
+					else
+						add(j++)
+			}
+			if (gh == "true")
+				printf "::error file=%s,line=%d,endLine=%d,title=clang-format::%s\n",
+				       escp(file), l, e, esc(msg)
+			printf "%s", out
+			nd = na = 0
+		}
+		BEGIN {
+			hdr = 1
+			if (color) {
+				red = "\033[31m"; grn = "\033[32m"; rst = "\033[0m"
+				ron = "\033[97;41m"; roff = "\033[0;31m"
+				gon = "\033[97;42m"; goff = "\033[0;32m"
+			}
+		}
+		/^diff --git / { flush(); hdr = 1; next }
+		# A removed "--i;" shows as "---i;", so only parse --- and +++ in headers
+		hdr && /^\+\+\+ b\// { file = substr($0, 7); next }
+		/^@@ / {
+			flush(); hdr = 0
+			split($2, r, ",")
+			old = substr(r[1], 2) + 0
+			next
+		}
+		hdr || /^\\/ { next }
+		/^-/ {
+			if (nd + na == 0)
+				start = old
+			d[++nd] = substr($0, 2); old++
+			next
+		}
+		/^\+/ {
+			if (nd + na == 0)
+				start = old
+			a[++na] = substr($0, 2)
+			next
+		}
+		{ flush(); old++ }
+		END {
+			flush()
+			if (!issues)
+				exit 2
+			printf "%d clang-format issue(s), fix with: git clang-format %s\n",
+			       issues, base
+		}'
+}
+
 _include_flags () {
 	local platform=$1
 
@@ -89,27 +235,43 @@ _platforms () {
 	done
 }
 
-# Check that lines changed since <base> follow .clang-format
+# Check that lines changed since <base> follow .clang-format. Each change is
+# reported at its line with the suggested fix, followed by the full diff.
 # Usage: check_clang_format <base>
 check_clang_format () {
-	local base=$1 out file git_cf
+	local base=$1 out git_cf
 
 	# Prefer the git-clang-format matching the clang-format version
 	git_cf="git-$RL_CI_CLANG_FORMAT"
 	command -v "$git_cf" > /dev/null || git_cf=git-clang-format
 
 	"$RL_CI_CLANG_FORMAT" --version
-	out=$("$git_cf" --binary "$RL_CI_CLANG_FORMAT" --diff --extensions c,h \
+	# git-clang-format prints a porcelain git diff, pin the format it is
+	# parsed with
+	out=$(GIT_CONFIG_COUNT=3 \
+		GIT_CONFIG_KEY_0=color.diff GIT_CONFIG_VALUE_0=never \
+		GIT_CONFIG_KEY_1=diff.noprefix GIT_CONFIG_VALUE_1=false \
+		GIT_CONFIG_KEY_2=diff.mnemonicPrefix GIT_CONFIG_VALUE_2=false \
+		"$git_cf" --binary "$RL_CI_CLANG_FORMAT" --diff --extensions c,h \
 		"$base" -- 2>&1) || true
 	if [[ -z "$out" || "$out" == "no modified files to format" ||
 	      "$out" == "clang-format did not modify any files" ]]; then
 		return 0
 	fi
 
-	echo "$out"
-	for file in $(echo "$out" | sed -n 's|^+++ b/||p'); do
-		_annotate error "$file" 1 "clang-format: run 'git clang-format $base'"
-	done
+	# Not a diff, e.g. an unknown <base>
+	if ! echo "$out" | _clang_format_report "$base"; then
+		echo "$out"
+		return 1
+	fi
+
+	if [[ "$GITHUB_ACTIONS" == "true" ]]; then
+		echo "::group::clang-format diff"
+		echo "$out"
+		echo "::endgroup::"
+	else
+		printf '\nclang-format diff:\n%s\n' "$out"
+	fi
 	return 1
 }
 
