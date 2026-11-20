@@ -9,21 +9,20 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
-#include "rpmsg_platform.h"
-#include "rpmsg_env.h"
 
 #include "adi_initialize.h"
 #include <sys/platform.h>
 #include <sys/adi_core.h>
 #include <sys/cache.h>
-
 #include <cycle_count.h>
-
 #include <services/int/adi_int.h>
 #include <services/pwr/adi_pwr.h>
 #include <xtensa/hal.h>
 #include <xtensa/corebits.h>
 #include <xtensa/tie/xt_core.h>
+
+#include "rpmsg_platform.h"
+#include "rpmsg_env.h"
 
 #ifndef RL_PLATFORM_CLKIN_HZ
 #define RL_PLATFORM_CLKIN_HZ (25000000U)
