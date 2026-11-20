@@ -19,25 +19,9 @@
 
 #include <cycle_count.h>
 
-#if !defined (__ADI_HAS_TRU__)
-#error unsupported platform
-#endif
-
-/* TRU is available to both ARM and SHARC cores */
-#include <services/tru/adi_tru.h>
-
-#if defined(__ADSPARM__)
-#define HAS_GIC /* GIC is only available to the ARM core */
-#include <services/int/adi_gic.h>
-#elif defined(__ADSPSHARC__)
-#define HAS_SEC /* SEC is only available to the SHARC cores */
-#include <services/int/adi_sec.h>
-#elif defined(__ADSPSHARCFX__)
 #include <services/int/adi_int.h>
+#include <services/pwr/adi_pwr.h>
 #include <xtensa/hal.h>
-#else
-#error unsupported platform, ARM/SHARC are not defined
-#endif /* defined(__ADSPARM__) */
 
 #ifndef RL_PLATFORM_CLKIN_HZ
 #define RL_PLATFORM_CLKIN_HZ (25000000U)
@@ -52,49 +36,12 @@ static void *platform_lock;
 static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 #endif
 
-/* Inline functions for interrupt control and memory barrier
- */
-
-#pragma inline
-void platform_global_isr_enable(uint32_t istate)
-{
-    /* Globally (conditionally) re-enable interrupts */
-    if (istate != 0u)
-    {
-        asm volatile("bit SET MODE1 0x1000;"); /* set GIE */
-    }
-}
-
-#pragma inline
-uint32_t platform_global_isr_disable(void)
-{
-    uint32_t mask = (uint32_t)__builtin_sysreg_bit_tst(sysreg_MODE1, 0x1000u /*IRPTEN*/);
-
-    /* in VISA the length of the instructions can be different so we can no
-       longer do a jump (PC,3). But we cannot have a straight label to avoid
-       multiple definitions so we automatically generate them */
-    asm volatile(" #define atomic_disable JUMP (PC,.SH_INT_DISABLED?) (DB); \
-             bit clr MODE1 0x1000; /* clear GIE*/ \
-             nop; \
-             .SH_INT_DISABLED?: "
-    "\natomic_disable");
-
-    return mask;
-}
-
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
     /* Register ISR to environment layer */
     env_register_isr(vector_id, isr_data);
 
     env_lock_mutex(platform_lock);
-
-    RL_ASSERT(0 <= isr_counter);
-    if (isr_counter == 0)
-    {
-        adi_int_EnableInt(iid, true);
-    }
-    isr_counter++;
 
     env_unlock_mutex(platform_lock);
 
@@ -138,8 +85,8 @@ void platform_notify(uint32_t vector_id)
  */
 void platform_time_delay(uint32_t num_msec)
 {
-	adi_delay_time(num_msec*1000000);
-
+    while (num_msec-- > 0U)
+	adi_delay_time(1000000U);
 }
 
 //uint32_t platform_us_clock_tick(void){
@@ -328,13 +275,6 @@ int32_t platform_init(void)
 	}
 
     iid = (uint32_t)INTR_TRU0_INT7;
-
-    /* Set the interrupt to edge-sensitive for use with the TRU (default is level-sensitive) */
-    #if defined(HAS_GIC)
-        adi_gic_ConfigInt(iid, ADI_GIC_INT_EDGE_SENSITIVE, ADI_GIC_INT_HANDLING_MODEL_1_N);
-    #elif defined(HAS_SEC)
-        adi_sec_EnableEdgeSense(iid, true);
-    #endif
 
 
     /* Install the ICC interrupt handler.
