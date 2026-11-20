@@ -32,6 +32,9 @@
 #elif defined(__ADSPSHARC__)
 #define HAS_SEC /* SEC is only available to the SHARC cores */
 #include <services/int/adi_sec.h>
+#elif defined(__ADSPSHARCFX__)
+#include <services/int/adi_int.h>
+#include <xtensa/hal.h>
 #else
 #error unsupported platform, ARM/SHARC are not defined
 #endif /* defined(__ADSPARM__) */
