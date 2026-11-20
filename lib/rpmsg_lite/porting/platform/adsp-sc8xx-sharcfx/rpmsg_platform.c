@@ -122,27 +122,6 @@ void platform_notify(uint32_t vector_id)
 
     env_lock_mutex(platform_lock);
 
-    /* TRGM_SOFT3 SLV3  ARM */
-    /* TRGM_SOFT4 SLV7  SHARC1 */
-    /* TRGM_SOFT5 SLV11 SHARC2 */
-
-    switch(coreID){
-    case ADI_CORE_ARM:
-        trigger = TRGM_SOFT4 + RL_GET_LINK_ID(vector_id); // TRGM_SOFT4 or TRGM_SOFT5
-        break;
-    case ADI_CORE_SHARC0:
-        trigger = TRGM_SOFT3 + 2*RL_GET_LINK_ID(vector_id); // TRGM_SOFT3 or TRGM_SOFT5
-        break;
-    case ADI_CORE_SHARC1:
-        trigger = TRGM_SOFT3 + RL_GET_LINK_ID(vector_id); // TRGM_SOFT3 or TRGM_SOFT4
-        break;
-    default:
-        // should never happen
-        break;
-    }
-
-    adi_tru_RaiseTriggerMaster(trigger);
-
     env_unlock_mutex(platform_lock);
 }
 
@@ -339,39 +318,7 @@ static void iccInterruptHandler(uint32_t iid, void *handlerArg){
 int32_t platform_init(void)
 {
 
-    /*
-     * Platform-specific interrupt initialization.
-     * We'll be raising SEC/GIC interrupts via the Trigger Routing Unit (ADSP-SC58x/ADSP-215xx)
-     */
-    switch (coreID)
-    {
-    case ADI_CORE_ARM:
-        iid = (uint32_t)INTR_TRU0_INT3;
-        break;
-
-    case ADI_CORE_SHARC0:
-        iid = (uint32_t)INTR_TRU0_INT7;
-        break;
-
-    case ADI_CORE_SHARC1:
-        iid = (uint32_t)INTR_TRU0_INT11;
-        break;
-    default:
-        return -1; // should never happen
-    }
-
-    /* Set up the Trigger Routing Unit to route the soft triggers 3,
-     * 4, and 5 to the ARM, SHARC1, and SHARC2 cores respectively.
-     * We do this on each node, even though only the first occurrence
-     * is necessary, to ensure that the triggers are ready to raise
-     * interrupts before any messages are sent.
-     */
-    adi_tru_Init(false); /* initialize the TRU, without reset */
-
-    //ICC interrupts
-    adi_tru_ConfigureSlave(TRGS_TRU0_IRQ3,  TRGM_SOFT3); /* SLV3  ARM */
-    adi_tru_ConfigureSlave(TRGS_TRU0_IRQ7,  TRGM_SOFT4); /* SLV7  SHARC1 */
-    adi_tru_ConfigureSlave(TRGS_TRU0_IRQ11, TRGM_SOFT5); /* SLV11 SHARC2 */
+    iid = (uint32_t)INTR_TRU0_INT7;
 
     /* Set the interrupt to edge-sensitive for use with the TRU (default is level-sensitive) */
     #if defined(HAS_GIC)
