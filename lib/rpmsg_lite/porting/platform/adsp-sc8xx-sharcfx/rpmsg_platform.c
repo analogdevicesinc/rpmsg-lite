@@ -38,6 +38,16 @@ static void *platform_lock;
 static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 #endif
 
+static inline uint32_t platform_global_isr_disable(void)
+{
+	return xthal_disable_interrupts();
+}
+
+static inline void platfrom_global_isr_enable(uint32_t state)
+{
+	xthal_restore_interrupts(state);
+}
+
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
     /* Register ISR to environment layer */
