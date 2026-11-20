@@ -22,6 +22,8 @@
 #include <services/int/adi_int.h>
 #include <services/pwr/adi_pwr.h>
 #include <xtensa/hal.h>
+#include <xtensa/corebits.h>
+#include <xtensa/tie/xt_core.h>
 
 #ifndef RL_PLATFORM_CLKIN_HZ
 #define RL_PLATFORM_CLKIN_HZ (25000000U)
@@ -104,7 +106,8 @@ void platform_time_delay(uint32_t num_msec)
  */
 int32_t platform_in_isr(void)
 {
-    return (sysreg_read(sysreg_IMASKP)) != 0u;
+    uint32_t stack = (uint32_t)(XT_RSR_PS() & PS_STACK_MASK);
+    return ((stack == PS_STACK_INTERRUPT) || (stack == PS_STACK_CROSS)) ? 1 : 0;
 }
 
 /**
@@ -274,7 +277,7 @@ int32_t platform_init(void)
 		return -1;
 	}
 
-    iid = (uint32_t)INTR_TRU0_INT7;
+    //iid = (uint32_t)INTR_TRU0_INT7;
 
 
     /* Install the ICC interrupt handler.
