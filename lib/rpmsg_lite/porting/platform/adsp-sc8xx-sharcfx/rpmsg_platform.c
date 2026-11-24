@@ -17,6 +17,7 @@
 #include <cycle_count.h>
 #include <services/int/adi_int.h>
 #include <services/pwr/adi_pwr.h>
+#include <services/tru/adi_tru.h>
 #include <xtensa/hal.h>
 #include <xtensa/corebits.h>
 #include <xtensa/tie/xt_core.h>
@@ -26,6 +27,16 @@
 
 #ifndef RL_PLATFORM_CLKIN_HZ
 #define RL_PLATFORM_CLKIN_HZ (25000000U)
+#endif
+
+#if defined(__ADSPSC846_FAMILY__)
+#define RL_ADI_RX_TRU_GEN ((uint32_t)TRGM_SYS_SOFT4_GEN)
+#define RL_ADI_RX_TRU_RCV ((uint32_t)TRGS_TRU0_RCV7)
+#define RL_ADI_RX_IID     ((uint32_t)INTR_TRU0_RCV7)
+#define RL_ADI_TX_TRU_GEN ((uint32_t)TRGM_SYS_SOFT3_GEN)
+#define RL_ADI_TX_TRU_RCV ((uint32_t)TRGM_TRU0_RCV3)
+#else
+#error "No TRU routes defined for this processor"
 #endif
 
 static int32_t isr_counter     = 0;
