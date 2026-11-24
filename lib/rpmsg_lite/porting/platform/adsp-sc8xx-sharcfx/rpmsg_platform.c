@@ -34,7 +34,7 @@
 #define RL_ADI_RX_TRU_RCV ((uint32_t)TRGS_TRU0_RCV7)
 #define RL_ADI_RX_IID     ((uint32_t)INTR_TRU0_RCV7)
 #define RL_ADI_TX_TRU_GEN ((uint32_t)TRGM_SYS_SOFT3_GEN)
-#define RL_ADI_TX_TRU_RCV ((uint32_t)TRGM_TRU0_RCV3)
+#define RL_ADI_TX_TRU_RCV ((uint32_t)TRGS_TRU0_RCV3)
 #else
 #error "No TRU routes defined for this processor"
 #endif
@@ -65,6 +65,13 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
 
     env_lock_mutex(platform_lock);
 
+    RL_ASSERT(0 <= isr_counter);
+    
+    if (isr_counter == 0)
+        adi_int_EnableInt(iid, true);
+
+    isr_counter++;
+
     env_unlock_mutex(platform_lock);
 
     return 0;
@@ -94,6 +101,8 @@ void platform_notify(uint32_t vector_id)
     int32_t trigger;
 
     env_lock_mutex(platform_lock);
+
+    adi_tru_RaiseTriggerMaster(RL_ADI_TX_TRU_GEN);
 
     env_unlock_mutex(platform_lock);
 }
@@ -297,7 +306,11 @@ int32_t platform_init(void)
 		return -1;
 	}
 
-    //iid = (uint32_t)INTR_TRU0_INT7;
+    adi_tru_Init(false);
+    adi_tru_ConfigureSlave(RL_ADI_RX_TRU_RCV, RL_ADI_RX_TRU_GEN);
+    adi_tru_ConfigureSlave(RL_ADI_TX_TRU_RCV, RL_ADI_TX_TRU_GEN);
+
+    iid = RL_ADI_RX_IID;
 
 
     /* Install the ICC interrupt handler.
@@ -317,6 +330,8 @@ int32_t platform_init(void)
     {
         return -1;
     }
+
+    xthal_interrupt_sens_set(ADI_IID_TO_CORE_INT(iid), XTHAL_INTERRUPT_SENS_EDGE);
 
     return 0;
 }
