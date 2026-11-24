@@ -53,7 +53,7 @@ static inline uint32_t platform_global_isr_disable(void)
 	return xthal_disable_interrupts();
 }
 
-static inline void platfrom_global_isr_enable(uint32_t state)
+static inline void platform_global_isr_enable(uint32_t state)
 {
 	xthal_restore_interrupts(state);
 }
