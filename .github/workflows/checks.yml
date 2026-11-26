@@ -8,13 +8,22 @@ on:
         required: false
         type: string
         default: ""
+      sarif:
+        description: >-
+          Upload the clang-format results to code scanning. The calling job
+          must then grant "security-events: write".
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   checks:
     # Provides clang and clang-format-16
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
+    # No permissions here: the job gets those of the calling job, and a called
+    # workflow can't raise them. It needs "contents: read", and for the sarif
+    # input "security-events: write" (plus "actions: read" in a private
+    # repository).
 
     steps:
       - name: Install dependencies
@@ -47,11 +56,32 @@ jobs:
           echo "base=$BASE" >> "$GITHUB_ENV"
 
       - name: clang-format
+        id: clang-format
         if: ${{ !cancelled() }}
+        env:
+          # The token of a pull request from a fork can't upload the results,
+          # the changes are then annotated by the check itself
+          SARIF: >-
+            ${{ inputs.sarif &&
+            (github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository) &&
+            format('{0}/clang-format.sarif', runner.temp) || '' }}
         run: |
           # shellcheck source=/dev/null
           source "$sh_source"
-          check_clang_format "$base"
+          rc=0
+          check_clang_format "$base" "$SARIF" || rc=$?
+          if [[ -n "$SARIF" && -s "$SARIF" ]]; then
+            echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$rc"
+
+      - name: Upload clang-format results
+        if: ${{ !cancelled() && steps.clang-format.outputs.sarif != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.clang-format.outputs.sarif }}
+          category: clang-format
 
       - name: Compile
         if: ${{ !cancelled() }}
