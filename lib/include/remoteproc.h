@@ -44,7 +44,8 @@
  * each of which begins with a resource entry header (as described below).
  */
 RL_PACKED_BEGIN
-struct resource_table {
+struct resource_table
+{
     uint32_t ver;
     uint32_t num;
     uint32_t reserved[2];
@@ -61,7 +62,8 @@ struct resource_table {
  * this header, and it should be parsed according to the resource type.
  */
 RL_PACKED_BEGIN
-struct fw_rsc_hdr {
+struct fw_rsc_hdr
+{
     uint32_t type;
     uint8_t data[0];
 } RL_PACKED_END;
@@ -88,7 +90,8 @@ struct fw_rsc_hdr {
  * check the validity of an index before the lookup table is accessed, so
  * please update it as needed.
  */
-enum fw_resource_type {
+enum fw_resource_type
+{
     RSC_CARVEOUT = 0,
     RSC_DEVMEM = 1,
     RSC_TRACE = 2,
@@ -145,7 +148,8 @@ enum fw_resource_type {
  * (mainly for debugging purposes).
  */
 RL_PACKED_BEGIN
-struct fw_rsc_carveout {
+struct fw_rsc_carveout
+{
     uint32_t type;
     uint32_t da;
     uint32_t pa;
@@ -185,7 +189,8 @@ struct fw_rsc_carveout {
  * access to physical addresses that are outside those ranges.
  */
 RL_PACKED_BEGIN
-struct fw_rsc_devmem {
+struct fw_rsc_devmem
+{
     uint32_t type;
     uint32_t da;
     uint32_t pa;
@@ -212,7 +217,8 @@ struct fw_rsc_devmem {
  * user via debugfs entries (called trace0, trace1, etc..).
  */
 RL_PACKED_BEGIN
-struct fw_rsc_trace {
+struct fw_rsc_trace
+{
     uint32_t type;
     uint32_t da;
     uint32_t len;
@@ -238,7 +244,8 @@ struct fw_rsc_trace {
  * dynamically allocation of the vring's device address is supported.
  */
 RL_PACKED_BEGIN
-struct fw_rsc_vdev_vring {
+struct fw_rsc_vdev_vring
+{
     uint32_t da;
     uint32_t align;
     uint32_t num;
@@ -282,7 +289,8 @@ struct fw_rsc_vdev_vring {
  * spec). the size of the config space is specified by @config_len.
  */
 RL_PACKED_BEGIN
-struct fw_rsc_vdev {
+struct fw_rsc_vdev
+{
     uint32_t type;
     uint32_t id;
     uint32_t notifyid;
@@ -306,7 +314,8 @@ struct fw_rsc_vdev {
  * such as vdevs, vrings.
  */
 RL_PACKED_BEGIN
-struct fw_rsc_vendor {
+struct fw_rsc_vendor
+{
     uint32_t type;
     uint32_t len;
 } RL_PACKED_END;
