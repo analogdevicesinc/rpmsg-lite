@@ -75,9 +75,11 @@ _changed_lines () {
 }
 
 # Report each change in a git-clang-format diff at its line, with the current
-# and suggested lines and the changed characters highlighted. On GitHub, each
-# change is also annotated at its line. Returns 2 if the input has no hunks.
-# Usage: _clang_format_report <base> < diff
+# and suggested lines and the changed characters highlighted. Returns 2 if the
+# input has no hunks. With <results>, each change is also written to that file
+# as a SARIF result, for code scanning to annotate. Without it, each change is
+# annotated at its line on GitHub.
+# Usage: _clang_format_report <base> [<results>] < diff
 _clang_format_report () {
 	local color=0
 
@@ -85,7 +87,7 @@ _clang_format_report () {
 		color=1
 	fi
 
-	awk -v base="$1" -v color="$color" -v gh="$GITHUB_ACTIONS" '
+	awk -v base="$1" -v sarif="$2" -v color="$color" -v gh="$GITHUB_ACTIONS" '
 		# Escape GitHub workflow command data and properties
 		function esc(s) {
 			gsub(/%/, "%25", s); gsub(/\r/, "%0D", s); gsub(/\n/, "%0A", s)
@@ -94,6 +96,30 @@ _clang_format_report () {
 		function escp(s) {
 			s = esc(s); gsub(/:/, "%3A", s); gsub(/,/, "%2C", s)
 			return s
+		}
+		# Escape a JSON string. Control characters other than tab and
+		# newline become a space.
+		function jesc(s,    i, c, r) {
+			r = ""
+			for (i = 1; i <= length(s); i++) {
+				c = substr(s, i, 1)
+				if (c == "\\" || c == "\"")
+					r = r "\\" c
+				else if (c == "\t")
+					r = r "\\t"
+				else if (c == "\n")
+					r = r "\\n"
+				else if (index(ctl, c))
+					r = r " "
+				else
+					r = r c
+			}
+			return r
+		}
+		# Escape a file path as a relative URI in a JSON string
+		function juri(s) {
+			gsub(/%/, "%25", s); gsub(/ /, "%20", s)
+			return jesc(s)
 		}
 		# Highlight s[from..to] with on/off, or with «» and visible
 		# whitespace if on is empty. An empty range marks a position.
@@ -174,7 +200,17 @@ _clang_format_report () {
 					else
 						add(j++)
 			}
-			if (gh == "true")
+			if (sarif != "") {
+				res = "{\"ruleId\":\"clang-format\",\"level\":\"error\""
+				res = res ",\"message\":{\"text\":\"" \
+				      jesc("Not formatted as .clang-format requires. " msg) "\"}"
+				res = res ",\"locations\":[{\"physicalLocation\":{"
+				res = res "\"artifactLocation\":{\"uri\":\"" juri(file) "\""
+				res = res ",\"uriBaseId\":\"%SRCROOT%\"}"
+				res = res ",\"region\":{\"startLine\":" l ",\"endLine\":" e "}}}]}"
+				sep = issues > 1 ? "," : ""
+				print sep res > sarif
+			} else if (gh == "true")
 				printf "::error file=%s,line=%d,endLine=%d,title=clang-format::%s\n",
 				       escp(file), l, e, esc(msg)
 			printf "%s", out
@@ -182,6 +218,9 @@ _clang_format_report () {
 		}
 		BEGIN {
 			hdr = 1
+			for (i = 1; i < 32; i++)
+				if (i != 9 && i != 10)
+					ctl = ctl sprintf("%c", i)
 			if (color) {
 				red = "\033[31m"; grn = "\033[32m"; rst = "\033[0m"
 				ron = "\033[97;41m"; roff = "\033[0;31m"
@@ -220,6 +259,46 @@ _clang_format_report () {
 		}'
 }
 
+# Write a SARIF log with the clang-format results, for GitHub code scanning
+# Usage: _clang_format_sarif <file> [<results>]
+_clang_format_sarif () {
+	local file=$1 results=$2 version
+
+	version=$("$RL_CI_CLANG_FORMAT" --version |
+		sed -n 's/.*version \([0-9][0-9.]*\).*/\1/p')
+	{
+		cat <<-EOF
+		{
+		  "\$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+		  "version": "2.1.0",
+		  "runs": [
+		    {
+		      "tool": {
+		        "driver": {
+		          "name": "clang-format",
+		          "version": "${version:-unknown}",
+		          "informationUri": "https://clang.llvm.org/docs/ClangFormat.html",
+		          "rules": [
+		            {
+		              "id": "clang-format",
+		              "shortDescription": {
+		                "text": "Code is not formatted as .clang-format requires"
+		              },
+		              "help": {
+		                "text": "Format the lines you changed with: git clang-format <base>"
+		              },
+		              "defaultConfiguration": { "level": "error" }
+		            }
+		          ]
+		        }
+		      },
+		      "results": [
+		EOF
+		[[ -n "$results" && -s "$results" ]] && cat "$results"
+		printf '      ]\n    }\n  ]\n}\n'
+	} > "$file"
+}
+
 _include_flags () {
 	local platform=$1
 
@@ -237,9 +316,12 @@ _platforms () {
 
 # Check that lines changed since <base> follow .clang-format. Each change is
 # reported at its line with the suggested fix, followed by the full diff.
-# Usage: check_clang_format <base>
+# With <sarif>, the changes are also written to that file as a SARIF log, to
+# upload to GitHub code scanning. The file is written when the check ran, with
+# no results if the format is fine, and not when the check itself failed.
+# Usage: check_clang_format <base> [<sarif>]
 check_clang_format () {
-	local base=$1 out git_cf
+	local base=$1 sarif=$2 out git_cf results=""
 
 	# Prefer the git-clang-format matching the clang-format version
 	git_cf="git-$RL_CI_CLANG_FORMAT"
@@ -256,13 +338,24 @@ check_clang_format () {
 		"$base" -- 2>&1) || true
 	if [[ -z "$out" || "$out" == "no modified files to format" ||
 	      "$out" == "clang-format did not modify any files" ]]; then
+		if [[ -n "$sarif" ]]; then
+			_clang_format_sarif "$sarif"
+		fi
 		return 0
 	fi
 
+	if [[ -n "$sarif" ]]; then
+		results=$(mktemp)
+	fi
 	# Not a diff, e.g. an unknown <base>
-	if ! echo "$out" | _clang_format_report "$base"; then
+	if ! echo "$out" | _clang_format_report "$base" "$results"; then
+		[[ -n "$results" ]] && rm -f "$results"
 		echo "$out"
 		return 1
+	fi
+	if [[ -n "$sarif" ]]; then
+		_clang_format_sarif "$sarif" "$results"
+		rm -f "$results"
 	fi
 
 	if [[ "$GITHUB_ACTIONS" == "true" ]]; then
