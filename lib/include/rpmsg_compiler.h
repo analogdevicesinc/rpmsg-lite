@@ -78,6 +78,13 @@
 /* XCC HiFi4 */
 #elif defined(__XCC__)
 
+#if defined(__ADSPSHARCFX__)
+/*
+ * The ADI SHARC-FX compiler (ccfx) is XCC based. The SHARC-FX shares memory
+ * with the Arm cores of the ADSP-SC8xx, so order the memory accesses with MEMW.
+ */
+#define MEM_BARRIER() __asm__ __volatile__("memw" : : : "memmory")
+#else
 /*
  * The XCC HiFi4 compiler is compatible with GNU compiler, with restrictions.
  * For ARM __schedule_barrier, there's no identical intrinsic in HiFi4.
@@ -85,6 +92,7 @@
  * Here use NOP instead, similar to ARM __nop.
  */
 #define MEM_BARRIER() __asm__ __volatile__("nop" : : : "memory")
+#endif
 
 #ifndef RL_PACKED_BEGIN
 #define RL_PACKED_BEGIN
