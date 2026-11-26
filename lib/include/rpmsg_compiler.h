@@ -117,10 +117,10 @@
 
 #elif defined(__CCESVERSION__)
 
-#if defined (__GNUC__)
+#if defined(__GNUC__)
 #define MEM_BARRIER() __sync_synchronize()
 #elif defined(__ADSPSHARC__)
-#define MEM_BARRIER() asm volatile ("SYNC;")
+#define MEM_BARRIER() asm volatile("SYNC;")
 #else
 #error unsupported platform
 #endif

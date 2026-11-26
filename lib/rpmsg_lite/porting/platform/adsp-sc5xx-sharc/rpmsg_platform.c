@@ -19,7 +19,7 @@
 
 #include <cycle_count.h>
 
-#if !defined (__ADI_HAS_TRU__)
+#if !defined(__ADI_HAS_TRU__)
 #error unsupported platform
 #endif
 
@@ -48,7 +48,7 @@ static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 static cycle_t cclk = 1000000000; /* Default to 1GHz */
 #define _CYCLES_PER_MSEC (cclk / 1000)
 #define _CYCLES_PER_USEC (cclk / 1000000)
-#if !defined (CLKIN)
+#if !defined(CLKIN)
 /* Default to 25 MHz, which is used for all the EZKITs*/
 #define CLKIN 25000000
 #endif
@@ -74,11 +74,12 @@ uint32_t platform_global_isr_disable(void)
     /* in VISA the length of the instructions can be different so we can no
        longer do a jump (PC,3). But we cannot have a straight label to avoid
        multiple definitions so we automatically generate them */
-    asm volatile(" #define atomic_disable JUMP (PC,.SH_INT_DISABLED?) (DB); \
+    asm volatile(
+        " #define atomic_disable JUMP (PC,.SH_INT_DISABLED?) (DB); \
              bit clr MODE1 0x1000; /* clear GIE*/ \
              nop; \
              .SH_INT_DISABLED?: "
-    "\natomic_disable");
+        "\natomic_disable");
 
     return mask;
 }
@@ -131,19 +132,20 @@ void platform_notify(uint32_t vector_id)
     /* TRGM_SOFT4 SLV7  SHARC1 */
     /* TRGM_SOFT5 SLV11 SHARC2 */
 
-    switch(coreID){
-    case ADI_CORE_ARM:
-        trigger = TRGM_SOFT4 + RL_GET_LINK_ID(vector_id); // TRGM_SOFT4 or TRGM_SOFT5
-        break;
-    case ADI_CORE_SHARC0:
-        trigger = TRGM_SOFT3 + 2*RL_GET_LINK_ID(vector_id); // TRGM_SOFT3 or TRGM_SOFT5
-        break;
-    case ADI_CORE_SHARC1:
-        trigger = TRGM_SOFT3 + RL_GET_LINK_ID(vector_id); // TRGM_SOFT3 or TRGM_SOFT4
-        break;
-    default:
-        // should never happen
-        break;
+    switch (coreID)
+    {
+        case ADI_CORE_ARM:
+            trigger = TRGM_SOFT4 + RL_GET_LINK_ID(vector_id); // TRGM_SOFT4 or TRGM_SOFT5
+            break;
+        case ADI_CORE_SHARC0:
+            trigger = TRGM_SOFT3 + 2 * RL_GET_LINK_ID(vector_id); // TRGM_SOFT3 or TRGM_SOFT5
+            break;
+        case ADI_CORE_SHARC1:
+            trigger = TRGM_SOFT3 + RL_GET_LINK_ID(vector_id); // TRGM_SOFT3 or TRGM_SOFT4
+            break;
+        default:
+            // should never happen
+            break;
     }
 
     adi_tru_RaiseTriggerMaster(trigger);
@@ -161,17 +163,19 @@ void platform_notify(uint32_t vector_id)
 void platform_time_delay(uint32_t num_msec)
 {
     cycle_t start, elapsed, delay_cycles;
-    start = __builtin_emuclk();
+    start        = __builtin_emuclk();
     delay_cycles = (num_msec * _CYCLES_PER_MSEC);
 
-    do {
+    do
+    {
         elapsed = __builtin_emuclk() - start;
-    }while(elapsed < delay_cycles);
+    } while (elapsed < delay_cycles);
 }
 
-uint32_t platform_us_clock_tick(void){
-	unsigned long long tick = __builtin_emuclk() / _CYCLES_PER_USEC;
-	return (uint32_t)tick;
+uint32_t platform_us_clock_tick(void)
+{
+    unsigned long long tick = __builtin_emuclk() / _CYCLES_PER_USEC;
+    return (uint32_t)tick;
 }
 
 /**
@@ -334,7 +338,8 @@ void *platform_patova(uintptr_t addr)
     return ((void *)(char *)addr);
 }
 
-static void iccInterruptHandler(uint32_t iid, void *handlerArg){
+static void iccInterruptHandler(uint32_t iid, void *handlerArg)
+{
     env_isr(0);
     env_isr(1);
     env_isr(2);
@@ -349,40 +354,42 @@ static void iccInterruptHandler(uint32_t iid, void *handlerArg){
 int32_t platform_init(void)
 {
     /*
-    * Retrieve the CCLK for the SHARC.  See CDU Clock Configuration options in the
-    * Hardware Reference Manual
-    */
+     * Retrieve the CCLK for the SHARC.  See CDU Clock Configuration options in the
+     * Hardware Reference Manual
+     */
     uint32_t cdu_sel;
     uint32_t cgu_mul;
     uint32_t cgu_div;
 
     coreID = adi_core_id();
 
-    switch (coreID) {
-    case ADI_CORE_SHARC0:
-        cdu_sel = *pREG_CDU0_CFG0 & BITM_CDU_CFG_SEL;
-        break;
-    case ADI_CORE_SHARC1:
-        cdu_sel = *pREG_CDU0_CFG1 & BITM_CDU_CFG_SEL;
-        break;
-    default:
-        return -1; // should never happen
+    switch (coreID)
+    {
+        case ADI_CORE_SHARC0:
+            cdu_sel = *pREG_CDU0_CFG0 & BITM_CDU_CFG_SEL;
+            break;
+        case ADI_CORE_SHARC1:
+            cdu_sel = *pREG_CDU0_CFG1 & BITM_CDU_CFG_SEL;
+            break;
+        default:
+            return -1; // should never happen
     }
 
-    switch (cdu_sel) {
-    case ENUM_CDU_CFG_IN0:
-        cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
-        cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_CSEL) >> BITP_CGU_DIV_CSEL;
-        cclk = CLKIN * cgu_mul / cgu_div;
-        break;
-    case ENUM_CDU_CFG_IN1:
-        /*SC58x and SC57x only*/
-        cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
-        cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_SYSSEL) >> BITP_CGU_DIV_SYSSEL;
-        cclk = CLKIN * cgu_mul / cgu_div;
-        break;
-    default:
-        return -1;
+    switch (cdu_sel)
+    {
+        case ENUM_CDU_CFG_IN0:
+            cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
+            cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_CSEL) >> BITP_CGU_DIV_CSEL;
+            cclk    = CLKIN * cgu_mul / cgu_div;
+            break;
+        case ENUM_CDU_CFG_IN1:
+            /*SC58x and SC57x only*/
+            cgu_mul = (*pREG_CGU0_CTL & BITM_CGU_CTL_MSEL) >> BITP_CGU_CTL_MSEL;
+            cgu_div = (*pREG_CGU0_DIV & BITM_CGU_DIV_SYSSEL) >> BITP_CGU_DIV_SYSSEL;
+            cclk    = CLKIN * cgu_mul / cgu_div;
+            break;
+        default:
+            return -1;
     }
 
     /*
@@ -391,19 +398,19 @@ int32_t platform_init(void)
      */
     switch (coreID)
     {
-    case ADI_CORE_ARM:
-        iid = (uint32_t)INTR_TRU0_INT3;
-        break;
+        case ADI_CORE_ARM:
+            iid = (uint32_t)INTR_TRU0_INT3;
+            break;
 
-    case ADI_CORE_SHARC0:
-        iid = (uint32_t)INTR_TRU0_INT7;
-        break;
+        case ADI_CORE_SHARC0:
+            iid = (uint32_t)INTR_TRU0_INT7;
+            break;
 
-    case ADI_CORE_SHARC1:
-        iid = (uint32_t)INTR_TRU0_INT11;
-        break;
-    default:
-        return -1; // should never happen
+        case ADI_CORE_SHARC1:
+            iid = (uint32_t)INTR_TRU0_INT11;
+            break;
+        default:
+            return -1; // should never happen
     }
 
     /* Set up the Trigger Routing Unit to route the soft triggers 3,
@@ -414,18 +421,17 @@ int32_t platform_init(void)
      */
     adi_tru_Init(false); /* initialize the TRU, without reset */
 
-    //ICC interrupts
-    adi_tru_ConfigureSlave(TRGS_TRU0_IRQ3,  TRGM_SOFT3); /* SLV3  ARM */
-    adi_tru_ConfigureSlave(TRGS_TRU0_IRQ7,  TRGM_SOFT4); /* SLV7  SHARC1 */
+    // ICC interrupts
+    adi_tru_ConfigureSlave(TRGS_TRU0_IRQ3, TRGM_SOFT3);  /* SLV3  ARM */
+    adi_tru_ConfigureSlave(TRGS_TRU0_IRQ7, TRGM_SOFT4);  /* SLV7  SHARC1 */
     adi_tru_ConfigureSlave(TRGS_TRU0_IRQ11, TRGM_SOFT5); /* SLV11 SHARC2 */
 
-    /* Set the interrupt to edge-sensitive for use with the TRU (default is level-sensitive) */
-    #if defined(HAS_GIC)
-        adi_gic_ConfigInt(iid, ADI_GIC_INT_EDGE_SENSITIVE, ADI_GIC_INT_HANDLING_MODEL_1_N);
-    #elif defined(HAS_SEC)
-        adi_sec_EnableEdgeSense(iid, true);
-    #endif
-
+/* Set the interrupt to edge-sensitive for use with the TRU (default is level-sensitive) */
+#if defined(HAS_GIC)
+    adi_gic_ConfigInt(iid, ADI_GIC_INT_EDGE_SENSITIVE, ADI_GIC_INT_HANDLING_MODEL_1_N);
+#elif defined(HAS_SEC)
+    adi_sec_EnableEdgeSense(iid, true);
+#endif
 
     /* Install the ICC interrupt handler.
      * One handler serves all connections into and out of this node (core).
