@@ -14,4 +14,12 @@ permissions:
 
 jobs:
   checks:
+    permissions:
+      contents: read
+      # For the clang-format results that checks.yml uploads to code scanning
+      security-events: write
+      # Only needed for the upload in a private repository
+      actions: read
     uses: analogdevicesinc/rpmsg-lite/.github/workflows/checks.yml@ci
+    with:
+      sarif: true
